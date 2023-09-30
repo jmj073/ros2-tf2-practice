@@ -64,7 +64,7 @@ private: // member function
   {
     if (turtle_spawning_service_ready_) {
       if (turtle_spawned_) {
-        publish_transform();
+        do_something_with_turtle();
       } else {
         RCLCPP_INFO(this->get_logger(), "Successfully spawned");
         turtle_spawned_ = true;
@@ -79,28 +79,40 @@ private: // member function
     }
   }
 
-  void publish_transform()
+  void do_something_with_turtle()
   {
-    // Store frame names in variables that will be used to
-    // compute transformations
     const auto& fromFrameRel = target_frame_;
     const auto& toFrameRel = source_frame_;
 
     geometry_msgs::msg::TransformStamped t;
 
-    // Look up for the transformation between target_frame and turtle2 frames
-    // and send velocity commands for turtle2 to reach target_frame
     try {
-      t = tf_buffer_->lookupTransform(
+      auto now = this->get_clock()->now();
+      auto when = now - 1s;
+      /* t = tf_buffer_->lookupTransform(
         toFrameRel, fromFrameRel,
-        tf2::TimePointZero);
+        // tf2::TimePointZero
+        // now, 50ms
+        now - 500ms
+      ); */
+      t = tf_buffer_->lookupTransform(
+        toFrameRel, now,
+        fromFrameRel, when,
+        "world",
+        50ms
+      );
     } catch (const tf2::TransformException & ex) {
       RCLCPP_INFO(
         this->get_logger(), "Could not transform %s to %s: %s",
         toFrameRel.c_str(), fromFrameRel.c_str(), ex.what());
-      return;
     }
 
+    publisher_->publish(transform2turtle_move(t));
+  }
+
+  geometry_msgs::msg::Twist transform2turtle_move(
+      const geometry_msgs::msg::TransformStamped& t)
+  {
     geometry_msgs::msg::Twist msg;
 
     msg.angular.z = rotation_rate_ * atan2(
@@ -111,7 +123,7 @@ private: // member function
       pow(t.transform.translation.x, 2) +
       pow(t.transform.translation.y, 2));
 
-    publisher_->publish(msg);
+    return msg;
   }
 
   void send_spawn_request()
